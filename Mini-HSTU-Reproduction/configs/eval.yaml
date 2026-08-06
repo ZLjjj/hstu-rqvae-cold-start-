@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - data: ml-1m
+  - model: hstu
+  - callbacks: default
+  - logger: many_loggers
+  - trainer: default
+  - paths: default
+  - extras: default
+  - hydra: default
+  - experiment: null
+  - optional local: default
+  - debug: null
+
+task_name: "eval"
+
+tags: ["dev"]
+
+# passing checkpoint path is necessary for evaluation
+ckpt_path: ???
+
+# output file for predictions
+output_file: ???

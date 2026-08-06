@@ -1,0 +1,52 @@
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual/env
+.venv/
+venv/
+.env
+
+# Logs/runtime
+**/logs/
+**/log/
+*.log
+
+# Training artifacts
+**/checkpoints/
+**/lightning_logs/
+**/csv/version_*/
+**/wandb/
+
+# Large artifacts / datasets
+**/dataset/
+**/data/
+**/tmp/
+**/out/
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.npz
+*.npy
+
+# Source packages/configuration named "data" are code, not runtime datasets.
+!RQ-VAE-Recommender/data/
+!RQ-VAE-Recommender/data/**
+!Mini-HSTU-Reproduction/src/generative_recommenders_pl/data/
+!Mini-HSTU-Reproduction/src/generative_recommenders_pl/data/**
+!Mini-HSTU-Reproduction/configs/data/
+!Mini-HSTU-Reproduction/configs/data/**
+
+# Keep repo-level docs and source only by default

@@ -1,0 +1,104 @@
+# @package _global_
+
+defaults:
+  - override /data: ml-1m
+  - override /model: hstu
+
+seed: 42
+
+trainer:
+  min_epochs: 10
+  max_epochs: 500
+  accumulate_grad_batches: 4
+
+data:
+  # Full-token attention is ~9x the item-level attention matrix. Four-way
+  # accumulation retains the prior effective batch size of 128.
+  batch_size: 32
+  cold_start:
+    enabled: true
+    cold_item_ratio: 0.1
+    cold_split_seed: 42
+    report_cold_only: true
+
+model:
+  _target_: generative_recommenders_pl.models.full_token_retrieval.HierarchicalFullTokenRetrieval
+  gr_output_length: 0
+  semantic_bridge_path: ../RQ-VAE-Recommender/out/rqvae/ml1m/bridge_artifacts.pt
+  num_codebooks: null
+  codebook_size: null
+  max_history_items: ${data.max_sequence_length}
+  max_token_sequence_len: ${eval:1 + 3 * ${data.max_sequence_length} + 3}
+  freeze_semantic_token_embeddings: false
+  include_bos_to_first_item_loss: false
+  missing_semantic_strategy: filter
+
+  beam_size: 32
+  adaptive_beam: true
+  max_beam_size: 256
+  target_unique_items: 200
+  exact_fill: true
+  exact_fill_on_validation: false
+  compute_full_auc: true
+  compute_full_auc_on_validation: false
+  exact_prefix_batch_size: 256
+
+  # The inherited item table is unused and frozen by the Full-Token model. It is
+  # retained only to preserve the common GenerativeRecommenders constructor.
+  embeddings:
+    _target_: generative_recommenders_pl.models.embeddings.embeddings.LocalEmbeddingModule
+    num_items: ${data.data_preprocessor.expected_max_item_id}
+    item_embedding_dim: ${model.item_embedding_dim}
+
+  preprocessor:
+    _target_: generative_recommenders_pl.models.preprocessors.LearnablePositionalEmbeddingInputFeaturesPreprocessor
+    max_sequence_len: ${model.max_token_sequence_len}
+    embedding_dim: ${model.item_embedding_dim}
+    dropout_rate: 0.0
+
+  sequence_encoder:
+    _target_: generative_recommenders_pl.models.sequential_encoders.hstu.HSTU
+    max_sequence_len: ${model.max_token_sequence_len}
+    max_output_len: 0
+    embedding_dim: ${model.item_embedding_dim}
+    item_embedding_dim: ${model.item_embedding_dim}
+    num_blocks: 2
+    num_heads: 1
+    attention_dim: ${model.item_embedding_dim}
+    linear_dim: ${model.item_embedding_dim}
+    linear_dropout_rate: 0.2
+    attn_dropout_rate: 0.0
+    normalization: rel_bias
+    linear_config: uvqk
+    linear_activation: silu
+    concat_ua: false
+    enable_relative_attention_bias: true
+
+  optimizer:
+    _target_: torch.optim.AdamW
+    _partial_: true
+    lr: 0.001
+    betas: [0.9, 0.98]
+    weight_decay: 0.001
+
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: true
+    mode: max
+    factor: 0.1
+    patience: 10
+    threshold: 1e-4
+
+  configure_optimizer_params:
+    monitor: val/ndcg@100
+    interval: epoch
+    frequency: 1
+
+callbacks:
+  model_checkpoint:
+    monitor: val/ndcg@100
+    mode: max
+  early_stopping:
+    monitor: val/ndcg@100
+    patience: 20
+    mode: max

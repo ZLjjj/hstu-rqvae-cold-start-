@@ -1,0 +1,181 @@
+task_name: train
+tags:
+- dev
+train: true
+test: true
+ckpt_path: null
+seed: 42
+data:
+  _target_: generative_recommenders_pl.data.reco_dataset.RecoDataModule
+  dataset_name: ml-1m
+  batch_size: 128
+  max_sequence_length: 200
+  chronological: true
+  positional_sampling_ratio: 1.0
+  data_preprocessor:
+    _target_: generative_recommenders_pl.data.preprocessor.MovielensDataProcessor
+    download_path: http://files.grouplens.org/datasets/movielens/ml-1m.zip
+    saved_name: tmp/movielens1m.zip
+    prefix: ${data.dataset_name}
+    convert_timestamp: false
+    expected_num_unique_items: 3706
+    expected_max_item_id: 3952
+  train_dataset:
+    _target_: generative_recommenders_pl.data.reco_dataset.RecoDataset
+    ignore_last_n: 1
+  val_dataset:
+    _target_: generative_recommenders_pl.data.reco_dataset.RecoDataset
+    ignore_last_n: 0
+  test_dataset:
+    _target_: generative_recommenders_pl.data.reco_dataset.RecoDataset
+    ignore_last_n: 0
+  cold_start:
+    enabled: true
+    cold_item_ratio: 0.1
+    cold_split_seed: 42
+    report_cold_only: true
+    exclude_cold_from_train_negatives: true
+  num_workers: 8
+model:
+  _target_: generative_recommenders_pl.models.retrieval.Retrieval
+  optimizer:
+    _target_: torch.optim.AdamW
+    _partial_: true
+    lr: 0.001
+    betas:
+    - 0.9
+    - 0.98
+    weight_decay: 0.001
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: true
+    mode: max
+    factor: 0.1
+    patience: 10
+    threshold: 0.0001
+  configure_optimizer_params:
+    monitor: val/ndcg@100
+    interval: epoch
+    frequency: 1
+  gr_output_length: 10
+  item_embedding_dim: 50
+  embeddings:
+    _target_: generative_recommenders_pl.models.embeddings.embeddings.DenseFeatureEmbeddingModule
+    num_items: ${data.data_preprocessor.expected_max_item_id}
+    item_embedding_dim: ${model.item_embedding_dim}
+    dense_feature_path: ../RQ-VAE-Recommender/out/rqvae/ml1m/dense_features.pt
+    freeze_dense: true
+  preprocessor:
+    _target_: generative_recommenders_pl.models.preprocessors.LearnablePositionalEmbeddingInputFeaturesPreprocessor
+    max_sequence_len: ${eval:${data.max_sequence_length} + ${model.gr_output_length}
+      + 1}
+    embedding_dim: ${model.item_embedding_dim}
+    dropout_rate: 0.2
+  sequence_encoder:
+    _target_: generative_recommenders_pl.models.sequential_encoders.hstu.HSTU
+    max_sequence_len: ${data.max_sequence_length}
+    max_output_len: ${eval:${model.gr_output_length} + 1}
+    embedding_dim: ${model.item_embedding_dim}
+    item_embedding_dim: ${model.item_embedding_dim}
+    num_blocks: 2
+    num_heads: 1
+    attention_dim: ${model.item_embedding_dim}
+    linear_dim: ${model.item_embedding_dim}
+    linear_dropout_rate: 0.2
+    attn_dropout_rate: 0.0
+    normalization: rel_bias
+    linear_config: uvqk
+    linear_activation: silu
+    concat_ua: false
+    enable_relative_attention_bias: true
+  postprocessor:
+    _target_: generative_recommenders_pl.models.postprocessors.postprocessors.L2NormEmbeddingPostprocessor
+    embedding_dim: ${model.item_embedding_dim}
+    eps: 1.0e-06
+  similarity:
+    _target_: generative_recommenders_pl.models.similarity.dot_product.DotProductSimilarity
+  negatives_sampler:
+    _target_: generative_recommenders_pl.models.negatives_samples.negative_sampler.LocalNegativesSampler
+    l2_norm: true
+    l2_norm_eps: 1.0e-06
+  candidate_index:
+    _target_: generative_recommenders_pl.models.indexing.candidate_index.CandidateIndex
+    k: 200
+    top_k_module:
+      _target_: generative_recommenders_pl.models.indexing.top_k.MIPSBruteForceTopK
+  loss:
+    _target_: generative_recommenders_pl.models.losses.autoregressive_losses.SampledSoftmaxLoss
+    num_to_sample: 128
+    softmax_temperature: 0.05
+  metrics:
+    _target_: generative_recommenders_pl.models.metrics.retrieval.RetrievalMetrics
+    k: ${model.candidate_index.k}
+    at_k_list:
+    - 10
+    - 50
+    - 100
+    - 200
+  compile_model: false
+  compute_full_auc: true
+callbacks:
+  model_checkpoint:
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    dirpath: ${paths.output_dir}/checkpoints
+    filename: epoch_{epoch:03d}
+    monitor: val/ndcg@100
+    verbose: false
+    save_last: true
+    save_top_k: 1
+    mode: max
+    auto_insert_metric_name: false
+    save_weights_only: false
+    every_n_train_steps: null
+    train_time_interval: null
+    every_n_epochs: null
+    save_on_train_epoch_end: null
+  early_stopping:
+    _target_: lightning.pytorch.callbacks.EarlyStopping
+    monitor: val/ndcg@100
+    min_delta: 0.0
+    patience: 20
+    verbose: false
+    mode: max
+    strict: true
+    check_finite: true
+    stopping_threshold: null
+    divergence_threshold: null
+    check_on_train_epoch_end: null
+  model_summary:
+    _target_: lightning.pytorch.callbacks.RichModelSummary
+    max_depth: -1
+  rich_progress_bar:
+    _target_: lightning.pytorch.callbacks.RichProgressBar
+  learning_rate_monitor:
+    _target_: lightning.pytorch.callbacks.LearningRateMonitor
+    logging_interval: step
+logger:
+  csv:
+    _target_: lightning.pytorch.loggers.csv_logs.CSVLogger
+    save_dir: ${paths.output_dir}
+    name: csv/
+    prefix: ''
+trainer:
+  _target_: lightning.pytorch.trainer.Trainer
+  default_root_dir: ${paths.output_dir}
+  min_epochs: 10
+  max_epochs: 500
+  accelerator: gpu
+  devices: 1
+  check_val_every_n_epoch: 1
+  deterministic: false
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+paths:
+  root_dir: .
+  log_dir: ${paths.root_dir}/logs/
+  output_dir: ${hydra:runtime.output_dir}
+  work_dir: ${hydra:runtime.cwd}
+extras:
+  ignore_warnings: false
+  enforce_tags: true
+  print_config: true

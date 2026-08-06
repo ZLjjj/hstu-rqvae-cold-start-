@@ -1,0 +1,6 @@
+- experiment=ml-1m-hstu-semantic-cold-warm-neg
+- seed=42
+- logger=csv
+- trainer.accelerator=gpu
+- trainer.devices=1
+- +data.num_workers=8

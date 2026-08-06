@@ -1,0 +1,8 @@
+exit_code=0
+end_time=2026-08-05T15:15:12+08:00
+wall_time_seconds=684
+run_dir=/root/autodl-tmp/semantic-id-rec-repro/repo/reproduction/warm_negative_ablation/rqvae_hstu_route_a_warm_neg/run
+metrics_csv=/root/autodl-tmp/semantic-id-rec-repro/repo/reproduction/warm_negative_ablation/rqvae_hstu_route_a_warm_neg/run/csv/version_0/metrics.csv
+best_checkpoint=/root/autodl-tmp/semantic-id-rec-repro/repo/reproduction/warm_negative_ablation/rqvae_hstu_route_a_warm_neg/run/checkpoints/last.ckpt
+peak_gpu_memory_mib=14559
+audit_json=/root/autodl-tmp/semantic-id-rec-repro/repo/reproduction/warm_negative_ablation/rqvae_hstu_route_a_warm_neg/run/cold_negative_sampling_audit.json

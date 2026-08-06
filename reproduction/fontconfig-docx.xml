@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <dir>/System/Library/Fonts</dir>
+  <dir>/System/Library/Fonts/Supplemental</dir>
+  <dir>/Library/Fonts</dir>
+  <dir>/Users/dszlj/Library/Fonts</dir>
+  <cachedir>/private/tmp/rqvae-hstu-font-cache</cachedir>
+  <config></config>
+</fontconfig>

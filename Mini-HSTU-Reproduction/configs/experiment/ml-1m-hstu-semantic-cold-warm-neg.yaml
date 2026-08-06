@@ -1,0 +1,63 @@
+# @package _global_
+
+defaults:
+  - override /data: ml-1m
+  - override /model: hstu
+
+seed: 42
+
+trainer:
+  min_epochs: 10
+  max_epochs: 500
+
+data:
+  batch_size: 128
+  cold_start:
+    enabled: true
+    cold_item_ratio: 0.1
+    cold_split_seed: 42
+    report_cold_only: true
+    exclude_cold_from_train_negatives: true
+
+model:
+  compute_full_auc: true
+
+  embeddings:
+    _target_: generative_recommenders_pl.models.embeddings.embeddings.SemanticCodebookEmbeddingModule
+    num_items: ${data.data_preprocessor.expected_max_item_id}
+    item_embedding_dim: ${model.item_embedding_dim}
+    item_to_codes_path: ../RQ-VAE-Recommender/out/rqvae/ml1m/bridge_artifacts.pt
+    codebook_weights_path: ../RQ-VAE-Recommender/out/rqvae/ml1m/bridge_artifacts.pt
+    num_codebooks: null
+    codebook_size: null
+    compose: concat_proj
+    freeze_codebook: true
+
+  optimizer:
+    _target_: torch.optim.AdamW
+    _partial_: true
+    lr: 0.001
+    betas: [0.9, 0.98]
+    weight_decay: 0.001
+
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: true
+    mode: max
+    factor: 0.1
+    patience: 10
+    threshold: 1e-4
+
+  configure_optimizer_params:
+    monitor: val/ndcg@100
+    interval: epoch
+    frequency: 1
+
+callbacks:
+  model_checkpoint:
+    monitor: val/ndcg@100
+    mode: max
+  early_stopping:
+    monitor: val/ndcg@100
+    patience: 20
+    mode: max

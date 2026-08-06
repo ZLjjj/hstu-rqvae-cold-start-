@@ -1,0 +1,13 @@
+include 'configs/rqvae_ml1m.gin'
+
+train.iterations = 2
+train.batch_size = 64
+train.save_model_every = 2
+train.eval_every = 2
+train.save_dir_root = "out/smoke/rqvae/ml1m/"
+train.csv_log_path = "out/smoke/rqvae/ml1m/metrics.csv"
+train.export_bridge_path = "out/smoke/rqvae/ml1m/bridge_artifacts.pt"
+train.print_every = 1
+train.profile_every = 1
+train.train_log_every = 1
+train.csv_log_every = 1

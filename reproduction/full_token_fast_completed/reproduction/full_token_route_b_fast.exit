@@ -1,0 +1,5 @@
+exit_code=0
+end_time=2026-08-03T09:02:40+08:00
+run_dir=/root/autodl-tmp/semantic-id-rec-repro/repo/Mini-HSTU-Reproduction/logs/train/runs/full_token_fast_2026-08-03_03-33-15
+log_file=/root/autodl-tmp/semantic-id-rec-repro/repo/reproduction/logs/full_token_route_b_fast_2026-08-03_03-33-15.log
+gpu_log=/root/autodl-tmp/semantic-id-rec-repro/repo/reproduction/logs/full_token_route_b_fast_2026-08-03_03-33-15_gpu.csv
