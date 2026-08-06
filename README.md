@@ -164,3 +164,9 @@ make summarize_ablation \
 - `reproduction/warm_negative_ablation_completed/warm_negative_ablation_results.md`
 - `reproduction/warm_negative_ablation_completed/NEGATIVE_SAMPLING_ABLATION_REPORT.md`
 - `reproduction/warm_negative_ablation_completed/`
+
+## 6. 下一步实验构思
+
+Route A 当前让所有物品共享同一个内容到推荐空间的变换矩阵。下一步计划研究“共享基础矩阵 + 可泛化个性化低秩变换”：利用暖物品行为学习协同变换规律，再根据冷物品内容预测个性化变换参数，使最终表示同时反映内容语义和协同语义。
+
+完整的研究动机、模型公式、实验矩阵、评估方法和成功标准见 [`NEXT_STEPS.md`](NEXT_STEPS.md)。
