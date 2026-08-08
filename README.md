@@ -2,6 +2,8 @@
 
 本仓库把 `RQ-VAE-Recommender` 和 `Mini-HSTU-Reproduction` 打通，用 RQ-VAE 语义码增强 HSTU 在严格 item 冷启动下的检索能力。
 
+完整实验总表与论文对照：[`STRICT_COLD_EXPERIMENTS_AND_BENCHMARKS.md`](STRICT_COLD_EXPERIMENTS_AND_BENCHMARKS.md)（按 Cold / Warm / Overall 分类，包含五路线、负采样修正、Personalized Route A 及后续消融）。
+
 ## 1. 项目内容
 
 项目包含 RQ-VAE 语义表示、HSTU 序列推荐、严格冷启动数据划分、
