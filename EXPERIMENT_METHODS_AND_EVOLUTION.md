@@ -1,9 +1,9 @@
 # 基于 HSTU 与 RQ-VAE 的冷启动推荐：实验方法、结果与演进全记录
 
-> 最后更新：2026-08-08  
+> 最后更新：2026-08-09  
 > 数据集：MovieLens-1M  
-> 当前正式结果：固定随机种子 42  
-> 阅读目标：不依赖其他文档，也能理解本项目的问题定义、数据协议、模型公式、五条初始路线、负采样修正、个性化 Route A 及后续消融是怎样一步步完成的。
+> 正式结果：历史实验使用固定随机种子 42；Free-ID Residual 使用 42/43/44 三个训练随机种子  
+> 阅读目标：不依赖其他文档，也能理解本项目的问题定义、数据协议、模型公式、五条初始路线、负采样修正、个性化 Route A、机制消融及 Free-ID Residual 是怎样一步步完成的。
 
 ## 0. 一页读懂整个实验过程
 
@@ -35,16 +35,19 @@ MovieLens-1M
   │     ├─ A3：内容生成残差
   │     └─ A4：Teacher-Student + 热度门控
   │
-  ├─ 第四阶段：机制消融
+  ├─ 第四阶段：A2 机制消融
   │     ├─ 历史侧 H / 候选侧 C 残差开关
-  │     ├─ Cold-vs-All / Warm / Cold 候选组
-  │     ├─ 冷残差强度 alpha 扫描
-  │     └─ 蒸馏权重 beta 与 Frozen Teacher
+  │     └─ Cold-vs-All / Warm / Cold 候选组
   │
-  └─ 当前下一步：Free-ID Residual
+  ├─ 第五阶段：冷残差强度 alpha 扫描
+  │
+  ├─ 第六阶段：蒸馏权重 beta 与 Frozen Teacher
+  │
+  └─ 第七阶段：Free-ID Residual（已完成）
         ├─ 暖物品：内容基础 + 自由 ID 协同残差
         ├─ 冷物品：只保留内容基础
-        └─ 同时改为独立 train / validation / test 目标
+        ├─ 独立 train / validation / test 目标
+        └─ 三随机种子正式评估 + Cold 候选组诊断
 ```
 
 截至当前，最重要的实验结论不是“生成式路线一定更好”，而是：
@@ -53,7 +56,8 @@ MovieLens-1M
 2. 把冷物品放进训练负样本池会形成伪负例，必须排除；
 3. 暖物品协同残差可以显著提升 Warm/Overall，并通过候选重排间接提升 Cold；
 4. 直接根据内容生成冷物品协同残差目前不稳定，往往提高 AUC、却损害 Top-K；
-5. 当前证据更支持“暖物品使用内容 + 协同残差，冷物品只使用内容基础”的显式分工。
+5. Free-ID 实验进一步验证了“暖物品使用内容 + 协同残差，冷物品只使用内容基础”的显式分工：B1 的 Cold NDCG@100 相对独立协议 B0 提升 95.2%，B3 的 Overall NDCG@100 提升 54.2%；
+6. 候选组诊断表明，这一 Cold 收益主要来自暖候选重排与暖冷分数校准，而不是冷物品内部语义排序同步变好。
 
 ---
 
@@ -170,7 +174,7 @@ test ignore_last_n = 0
 
 也就是说，训练可见前缀截止到每个用户倒数第二个行为，并在该前缀内逐位置计算 next-item loss；validation 和 test 都使用最后一个行为作为评估目标，两者目标集合相同。checkpoint 又根据 validation 指标选择，所以这些结果适合机制研究和阶段性比较，**不是完全独立的无偏最终测试**。
 
-当前准备中的 Free-ID 实验已经改为：
+本轮 Free-ID 实验已经改为：
 
 ```text
 train ignore_last_n = 2
@@ -1037,20 +1041,23 @@ $$
 
 ---
 
-## 13. 当前下一步：Free-ID Residual（已实现配置，结果待正式训练）
+## 13. 第七阶段：Free-ID Residual（已完成）
 
-前面的低秩残差仍然要求残差由 \(z_i\) 和低秩系数共同构造。下一步进一步检验更直接的假设：暖物品增加一个自由 ID residual，冷物品只保留内容基础。
+前面的低秩残差要求残差由 \(z_i\) 和低秩系数共同构造。本轮进一步检验一个更直接的假设：为有协同行为证据的暖物品学习自由 ID residual，严格冷物品则只保留内容基础。该设计不尝试凭内容“猜出”冷物品的 ID 参数，而是把内容泛化与暖侧协同记忆明确分工。
 
-### 13.1 模型公式
+### 13.1 模型公式与归一化位置
 
-$$
-e_i^{\mathrm{base}}=W_0z_i+b.
-$$
-
-对暖物品：
+内容基础表示为：
 
 $$
-e_i=e_i^{\mathrm{base}}+\eta r_i^{\mathrm{ID}},
+e_i^{\mathrm{base}}=W_0z_i+b,
+\qquad e_i^{\mathrm{base}}\in\mathbb R^{50}.
+$$
+
+对训练正曝光过的暖物品：
+
+$$
+e_i=e_i^{\mathrm{base}}+\beta_{\mathrm{ID}}r_i^{\mathrm{ID}}.
 $$
 
 对严格冷物品：
@@ -1059,7 +1066,9 @@ $$
 e_i=e_i^{\mathrm{base}}.
 $$
 
-其中 \(r_i^{\mathrm{ID}}\in\mathbb R^{50}\) 只为正训练曝光暖物品建立，零初始化；冷物品没有残差表索引，无法误访问。当前缩放系数为 \(\eta=0.25\)，正则为：
+其中 \(r_i^{\mathrm{ID}}\in\mathbb R^{50}\) 是零初始化的自由参数，只为 3,333 个训练正曝光暖物品建立，共增加 166,650 个参数；冷物品没有残差表索引，也不会产生 ID residual 访问。为避免与 A4 的蒸馏权重混淆，本节将代码中的 `beta` 记作 \(\beta_{\mathrm{ID}}\)，它只控制 ID residual 的缩放强度。
+
+残差正则项为：
 
 $$
 \mathcal L
@@ -1068,16 +1077,61 @@ $$
 \sum_i\left\|r_i^{\mathrm{ID}}\right\|_2^2.
 $$
 
-### 13.2 四组预注册对照
+embedding 模块内部不提前归一化，历史物品表示以未归一化形式进入 HSTU；只在最终检索点积前，对用户表示与候选表示执行 L2Norm：
 
-| 实验 | 方法 |
-|---|---|
-| B0 | 独立 train/validation/test 的 A0 内容基线 |
-| B1 | 历史侧和候选侧都使用 warm Free-ID residual |
-| B2 | 只有候选侧使用 warm Free-ID residual |
-| B3 | 在 B1 上对 residual 使用 0.2 dropout |
+$$
+s(u,i)=
+\frac{h_u}{\|h_u\|_2}^{\mathsf T}
+\frac{e_i}{\|e_i\|_2}.
+$$
 
-这组实验同时修复 validation/test 重叠，并预先定义 checkpoint 选择分数：
+### 13.2 四组对照
+
+| 实验 | 历史侧 | 候选侧 | ID Dropout | 验证集选择的 \(\beta_{\mathrm{ID}}\) |
+|---|---|---|---:|---:|
+| B0 | content | content | 0 | 0 |
+| B1 | content + ID | content + ID | 0 | 1.0 |
+| B2 | content | content + ID | 0 | 0.5 |
+| B3 | content + ID | content + ID | 0.2 | 1.0 |
+
+B0 用于回答“独立时间目标协议下，纯内容 Route A 能达到什么水平”；B1 检验历史侧和候选侧对称加入 ID residual；B2 只在候选侧加入 residual，用来分离候选校准与历史协同建模；B3 在 B1 上随机屏蔽 20% residual，限制模型过度依赖 ID 分支。
+
+### 13.3 独立时间目标与严格冷审计
+
+本轮使用：
+
+```text
+train      ignore_last_n = 2
+validation ignore_last_n = 1
+test       ignore_last_n = 0
+```
+
+因此训练、验证和测试分别对应不同时间位置。正式审计结果为：
+
+| 审计项 | 结果 |
+|---|---:|
+| train / validation / test 样本数 | 6,040 / 6,040 / 6,040 |
+| validation / test Cold 样本数 | 525 / 545 |
+| 冷物品数 | 371 |
+| 训练负样本暖物品池 | 3,512 |
+| 评估候选总数 / 冷候选数 | 3,883 / 371 |
+| cold history / positive / negative exposure | 0 / 0 / 0 |
+| cold ID residual access | 0 |
+| validation-train positive overlap | 0 |
+| validation-test target overlap | 0 |
+| 测试 Cold Semantic-ID valid / missing | 545 / 0 |
+
+15 组 beta 扫描和 12 组三随机种子正式实验全部正常退出，12 份训练前后协议审计全部通过，完整测试为 105 passed。
+
+### 13.4 beta 只在验证集选择
+
+对 B1/B2/B3 分别扫描：
+
+$$
+\beta_{\mathrm{ID}}\in\{0.05,0.10,0.25,0.50,1.00\}.
+$$
+
+预先定义的验证集选择分数为：
 
 $$
 S_{\mathrm{val}}
@@ -1086,7 +1140,66 @@ S_{\mathrm{val}}
 +0.25\,\mathrm{OverallNDCG@100}.
 $$
 
-配置和测试已经实现，但本文件不虚构尚未产生的服务器正式结果。完成后应追加 B0–B3 的 Cold/Warm/Overall、多个随机种子以及均值和标准差。
+最终选择 B1=1.0、B2=0.5、B3=1.0，随后才在 seed 42、43、44 上正式测试。beta 扫描目录不包含测试指标，避免使用测试集反向选择超参数。B3 的 0.5 与 1.0 验证分数仅相差 0.000092，因此其 beta 最优点应理解为 0.5--1.0 的平台，而不是已经精确确定为 1.0。
+
+### 13.5 三随机种子正式结果
+
+下表均为 seed 42/43/44 的均值 ± 样本标准差。Cold、Warm、Overall 分别包含 545、5,495、6,040 个测试目标，平均有效候选约为 3,771--3,774 个。
+
+| Model | Cold AUC | Cold HR@100 | Cold NDCG@100 | Warm NDCG@100 | Overall NDCG@100 |
+|---|---:|---:|---:|---:|---:|
+| B0 Content | 0.6805±0.0040 | 0.1651±0.0128 | 0.0430±0.0018 | 0.1303±0.0115 | 0.1224±0.0106 |
+| **B1 Symmetric** | **0.9019±0.0102** | **0.3694±0.0377** | **0.0839±0.0091** | 0.1716±0.0128 | 0.1637±0.0108 |
+| B2 Candidate-only | 0.8116±0.0060 | 0.2183±0.0160 | 0.0480±0.0056 | 0.1800±0.0054 | 0.1681±0.0049 |
+| **B3 Symmetric + dropout** | 0.8938±0.0008 | 0.3284±0.0160 | 0.0720±0.0041 | **0.2003±0.0032** | **0.1888±0.0030** |
+
+相对 B0，B1 的 Cold AUC、HR@100、NDCG@100 分别提高约 32.5%、123.7%、95.2%；B3 的 Warm 和 Overall NDCG@100 分别提高 53.8% 和 54.2%。三个 seed 上的提升方向一致。B1 是严格 Cold Top-K 最优模型，但 Cold 波动较大；B3 是 Warm/Overall 最优且更稳定的统一模型。
+
+### 13.6 Cold 候选组诊断
+
+主 Cold 指标让每个冷目标与全部有效暖冷候选竞争。为了判断提升来自哪里，又把候选拆为 Cold-vs-Warm 和 Cold-vs-Cold：
+
+| Model | Candidate group | AUC | HR@100 | NDCG@100 | corrected MRR |
+|---|---|---:|---:|---:|---:|
+| B0 | Cold-vs-All | 0.6805 | 0.1651 | 0.0430 | 0.0176 |
+| B0 | Cold-vs-Warm | 0.6798 | 0.1719 | 0.0461 | 0.0200 |
+| B0 | Cold-vs-Cold | 0.6870 | 0.5633 | **0.1674** | **0.0797** |
+| B1 | Cold-vs-All | **0.9019** | **0.3694** | **0.0839** | **0.0265** |
+| B1 | Cold-vs-Warm | **0.9237** | **0.5829** | **0.2680** | **0.1990** |
+| B1 | Cold-vs-Cold | 0.6954 | 0.5651 | 0.1482 | 0.0598 |
+| B2 | Cold-vs-All | 0.8116 | 0.2183 | 0.0480 | 0.0143 |
+| B2 | Cold-vs-Warm | 0.8259 | 0.2636 | 0.0817 | 0.0446 |
+| B2 | Cold-vs-Cold | 0.6769 | 0.5058 | 0.1332 | 0.0523 |
+| B3 | Cold-vs-All | 0.8938 | 0.3284 | 0.0720 | 0.0207 |
+| B3 | Cold-vs-Warm | 0.9138 | 0.4465 | 0.1343 | 0.0688 |
+| B3 | Cold-vs-Cold | **0.7037** | 0.5541 | 0.1554 | 0.0691 |
+
+不同候选组的规模不同，因此不能直接把 Cold-vs-Cold 的 HR 与 Cold-vs-All 横向比较；正确方法是比较同一候选组内 B0 与 residual 模型的变化。三种 residual 模型的 Cold-vs-All 均提高，但 Cold-vs-Cold NDCG@100 都低于 B0，说明收益主要来自两部分：
+
+1. 历史中的暖 ID residual 帮助 HSTU 形成更有协同信息的用户表示；
+2. 候选侧 ID residual 重新排列暖物品，并校准暖候选与无 ID 冷物品之间的相对分数。
+
+B1 明显优于仅候选侧加 residual 的 B2，说明历史侧协同信息同样重要。但这些结果不能表述为“冷物品内部语义排序已经达到 AUC 0.90”；B1 的 0.9019 是 Cold-vs-All AUC，而它的 Cold-vs-Cold AUC 只有 0.6954。
+
+### 13.7 residual 规模与 Dropout
+
+定义缩放后的残差相对强度：
+
+$$
+R=
+\frac{\beta_{\mathrm{ID}}\,\mathbb E\|r_i^{\mathrm{ID}}\|_2}
+{\mathbb E\|e_i^{\mathrm{base}}\|_2}.
+$$
+
+验证最优点上，B1 的 \(R\) 约为 0.94，B2 约为 1.09，说明 ID 分支与内容基础同量级甚至更强；B3 通过 0.2 dropout 将该比值稳定在约 0.50。各组 base norm 没有坍塌，因此没有证据表明内容分支完全停止学习，但 B1/B2 的 Cold-vs-Cold NDCG 下降，说明确实存在较强的 ID 依赖。
+
+因此，Free-ID 实验得到的完整结论是：
+
+- 如果主要目标是严格 Cold-vs-All Top-K，选择 B1；
+- 如果需要 Warm/Overall 更好且跨训练 seed 更稳定，选择 B3；
+- B2 只证明候选校准有一定收益，不是统一最优结构；
+- Free-ID 验证了“内容基础 + 暖侧协同残差”的系统价值，但没有证明冷物品内容表示本身显著变好；
+- 当前三个训练 seed 共用同一个 cold split，下一步还需更换多个冷物品集合 seed，验证结论对不同冷目录是否稳定。
 
 ---
 
@@ -1153,14 +1266,16 @@ make train experiment=ml-1m-hstu-semantic-cold-a3-content logger=csv
 make train experiment=ml-1m-hstu-semantic-cold-a4-teacher-student logger=csv
 ```
 
-### 14.6 运行 Free-ID 下一步实验
+### 14.6 运行完整 Free-ID 实验套件
 
 ```bash
-make train experiment=ml-1m-hstu-semantic-cold-free-id-b0 logger=csv
-make train experiment=ml-1m-hstu-semantic-cold-free-id-b1 logger=csv
-make train experiment=ml-1m-hstu-semantic-cold-free-id-b2 logger=csv
-make train experiment=ml-1m-hstu-semantic-cold-free-id-b3 logger=csv
+cd ..
+ROOT=/root/autodl-tmp/semantic-id-rec-repro/repo \
+PY=/root/autodl-tmp/semantic-id-rec-repro/env-fbgemm/bin/python \
+bash experiments/free_id_residual/run_server.sh
 ```
+
+该脚本会依次执行完整单元测试、B0--B3 smoke test、B1--B3 的五档 beta 验证集扫描、beta 选择、四组模型的三随机种子正式训练、候选组诊断和结果聚合；已完成的 `SUCCESS` 目录会安全跳过，未完成目录不会被静默覆盖。
 
 每轮必须保留：resolved config、best checkpoint、metrics.csv、冷启动 split、负采样审计 JSON、GPU/环境记录和汇总 CSV。只有划分哈希、候选哈希与协议审计一致的实验才能横向比较。
 
@@ -1168,17 +1283,18 @@ make train experiment=ml-1m-hstu-semantic-cold-free-id-b3 logger=csv
 
 ## 15. 结果可信度与不能越过的边界
 
-1. 当前历史正式训练只有 seed 42，尚未证明统计显著；建议至少补 3–5 个种子。
-2. 历史 validation 与 test 目标重叠，因此不能把当前最高数值宣称为独立测试 SOTA。
+1. 第一轮路线对照与 Personalized Route A 历史实验只有 seed 42；Free-ID 已补 seed 42/43/44，但三个训练 seed 仍共用同一个 cold split，尚未证明对不同冷物品集合也稳定。
+2. 历史 validation 与 test 目标重叠，因此不能把历史最高数值宣称为独立测试 SOTA；Free-ID 已使用互不重叠的时间目标，并且 beta 只在 validation 上选择。
 3. A4 alpha=0 是测试集扫描后的诊断点，必须在新独立 validation 上预选后再测试。
-4. 371 个冷物品中只有 338 个有 Semantic ID；545 条冷正目标全部来自这 338 个物品。其余 33 个物品仍参加候选竞争，但没有正目标样本。
+4. 历史实验中 371 个冷物品有 338 个具备 Semantic ID，545 条冷正目标全部来自这些有效编码物品；Free-ID 新协议的正式审计进一步确认 545 条测试 Cold 目标全部具备有效 Semantic ID。
 5. 不同论文使用采样候选、Cold-only 候选或全目录候选，绝对 HR/NDCG 不可脱离协议直接比较。
 6. AUC 反映全局两两排序，HR/NDCG/MRR 反映头部体验；任何模型结论都必须同时报告二者。
 7. 当前严格协议是“零 HSTU 行为曝光”，不是“RQ-VAE 内容编码器也从未见过冷物品内容”；若采用后一种更强定义，需要重新对齐 RQ-VAE holdout。
+8. Free-ID 的 Cold AUC=0.9019 是冷目标对全量暖冷候选的排序能力；对应 Cold-vs-Cold AUC 只有 0.6954，不能把前者解释成冷物品内部语义排序达到 0.90。
 
-在完成独立验证、多随机种子和置信区间之前，推荐对外使用下面的表述：
+在补充多个 cold split seed 与更充分的统计检验之前，推荐对外使用下面的表述：
 
-> 在固定 seed 的严格零训练曝光协议下，RQ-VAE Route A 明显改善了冷目标排序；暖物品个性化协同残差进一步提升了 Cold、Warm 与 Overall。机制消融表明，其 Cold 收益主要来自暖候选重排和暖冷分数校准，而内容生成的冷协同残差尚未实现稳定的 Top-K 迁移。
+> 在严格零 HSTU 行为曝光、独立时间验证/测试和全目录候选协议下，暖物品 Free-ID Residual 与冷物品内容退化相结合，可同时提升冷目标全局竞争力和暖物品推荐效果。三训练 seed 结果显示，对称 Free-ID 的 Cold NDCG@100 相对内容基线提升 95.2%，加入 residual dropout 的模型取得最佳 Warm/Overall；候选组诊断进一步表明，Cold 收益主要来自历史协同建模、暖候选重排和暖冷分数校准，而不是冷物品内部语义排序同步提高。
 
 ---
 
@@ -1191,3 +1307,5 @@ make train experiment=ml-1m-hstu-semantic-cold-free-id-b3 logger=csv
 - [Personalized Route A 四组实验](experiments/personalized_route_a/FOUR_EXPERIMENTS_SUMMARY.md)
 - [Personalized Route A 后续机制消融](experiments/personalized_route_a_followup/METHOD_AND_RESULTS_SUMMARY.md)
 - [Personalized Route A 后续完整报告](experiments/personalized_route_a_followup/FOLLOWUP_ABLATION_REPORT.md)
+- [Free-ID Residual 实验摘要](experiments/free_id_residual/summary.md)
+- [Free-ID Residual 完整报告](experiments/free_id_residual/FINAL_REPORT.md)
