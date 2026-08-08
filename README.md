@@ -4,6 +4,8 @@
 
 完整实验总表与论文对照：[`STRICT_COLD_EXPERIMENTS_AND_BENCHMARKS.md`](STRICT_COLD_EXPERIMENTS_AND_BENCHMARKS.md)（按 Cold / Warm / Overall 分类，包含五路线、负采样修正、Personalized Route A 及后续消融）。
 
+从数据划分、RQ-VAE 与 HSTU 公式到每轮消融的完整演进记录：[`EXPERIMENT_METHODS_AND_EVOLUTION.md`](EXPERIMENT_METHODS_AND_EVOLUTION.md)。
+
 ## 1. 项目内容
 
 项目包含 RQ-VAE 语义表示、HSTU 序列推荐、严格冷启动数据划分、
