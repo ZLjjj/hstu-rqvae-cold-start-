@@ -52,7 +52,7 @@ $$
 $$
 
 $$
-v_i = \operatorname{Norm}\left((W_0+A\,\mathrm{Diag}(g_i)B)z_i+b\right).
+v_i = \mathrm{Norm}\!\left((W_0+A\,\mathrm{Diag}(g_i)B)z_i+b\right).
 $$
 
 这里：
@@ -90,7 +90,7 @@ $$
 
 $$
 \mathcal L_{\text{distill}}
-=\left\|G(z_i)-\operatorname{sg}(g_i^{\text{collab}})\right\|_2^2,
+=\left\|G(z_i)-\mathrm{sg}\!\left(g_i^{\text{collab}}\right)\right\|_2^2,
 $$
 
 其中 `sg` 表示停止梯度。
@@ -102,7 +102,7 @@ $$
 $$
 W_i=\sum_{k=1}^{K}\alpha_{ik}W_k,
 \qquad
-\alpha_i=\operatorname{softmax}(G(z_i)).
+\alpha_i=\mathrm{softmax}\!\left(G(z_i)\right).
 $$
 
 模型共享 $K$ 个变换专家，每个物品根据内容选择不同的专家组合。专家通过暖物品推荐损失学习协同语义，冷物品则依靠内容门控选择专家。该方案比完整 $W_i$ 更容易训练，也天然支持冷启动。
